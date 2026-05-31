@@ -4,12 +4,31 @@ import { truncateToWidth } from "@earendil-works/pi-tui";
 import * as os from "node:os";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
-import { readFile, readdir } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const execAsync = promisify(exec);
 const PI_AGENT_DIR = join(os.homedir(), ".pi", "agent");
 const PI_NPM_DIR = join(PI_AGENT_DIR, "npm", "node_modules");
+
+type BannerColor = "pink" | "cyan" | "yellow" | "green";
+interface BannerConfig {
+  showRose: boolean;
+  showTextLogo: boolean;
+  color: BannerColor;
+}
+const DEFAULT_BANNER_CONFIG: BannerConfig = {
+  showRose: true,
+  showTextLogo: true,
+  color: "pink",
+};
+const BANNER_COLORS: BannerColor[] = ["pink", "cyan", "yellow", "green"];
+const BANNER_PALETTES: Record<BannerColor, { rose: [number, number, number]; label: [number, number, number]; value: [number, number, number]; logoFresh: [number, number, number]; logoDim: [number, number, number] }> = {
+  pink: { rose: [255, 118, 195], label: [200, 100, 160], value: [255, 140, 210], logoFresh: [255, 138, 206], logoDim: [95, 30, 60] },
+  cyan: { rose: [95, 210, 255], label: [85, 170, 205], value: [130, 225, 255], logoFresh: [105, 220, 255], logoDim: [25, 80, 100] },
+  yellow: { rose: [255, 210, 95], label: [210, 165, 65], value: [255, 225, 135], logoFresh: [255, 215, 105], logoDim: [105, 75, 25] },
+  green: { rose: [110, 220, 145], label: [85, 175, 115], value: [145, 240, 170], logoFresh: [120, 230, 150], logoDim: [30, 95, 50] },
+};
 
 const TEXT_LOGO = [
   "                  ▄▄▄▀▀▀▀▀██                                ▄▄▀▄▄           ▄▄█▀▀▀██   ▀▀█▄    ▄▄▄",
@@ -47,6 +66,43 @@ const ROSE_LARGE_RAW = [
 
 function rgb(r: number, g: number, b: number, text: string): string {
   return `\x1b[38;2;${r};${g};${b}m${text}\x1b[39m`;
+}
+
+function gentleAiConfigHome(): string {
+  return process.env.GENTLE_PI_CONFIG_HOME ?? join(os.homedir(), ".pi", "gentle-ai");
+}
+
+function bannerConfigPath(): string {
+  return join(gentleAiConfigHome(), "banner.json");
+}
+
+function normalizeBannerConfig(value: unknown): BannerConfig {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return { ...DEFAULT_BANNER_CONFIG };
+  const record = value as Record<string, unknown>;
+  return {
+    showRose: typeof record.showRose === "boolean" ? record.showRose : DEFAULT_BANNER_CONFIG.showRose,
+    showTextLogo: typeof record.showTextLogo === "boolean" ? record.showTextLogo : DEFAULT_BANNER_CONFIG.showTextLogo,
+    color: BANNER_COLORS.includes(record.color as BannerColor) ? record.color as BannerColor : DEFAULT_BANNER_CONFIG.color,
+  };
+}
+
+async function readBannerConfig(): Promise<BannerConfig> {
+  try {
+    return normalizeBannerConfig(JSON.parse(await readFile(bannerConfigPath(), "utf8")));
+  } catch {
+    return { ...DEFAULT_BANNER_CONFIG };
+  }
+}
+
+async function writeBannerConfig(config: BannerConfig): Promise<void> {
+  const path = bannerConfigPath();
+  await mkdir(join(path, ".."), { recursive: true });
+  await writeFile(path, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+}
+
+function paletteColor(color: BannerColor, key: keyof typeof BANNER_PALETTES[BannerColor], text: string): string {
+  const [r, g, b] = BANNER_PALETTES[color][key];
+  return rgb(r, g, b, text);
 }
 
 function normalizeAscii(lines: string[]): string[] {
@@ -472,6 +528,70 @@ async function countPackageExtensions(packages: unknown[]): Promise<number> {
 }
 
 export default function (pi: ExtensionAPI) {
+  const notifyBannerConfig = (ctx: any, config: BannerConfig) => {
+    ctx.ui.notify(
+      [
+        `Startup banner: rose=${config.showRose ? "on" : "off"}, text logo=${config.showTextLogo ? "on" : "off"}, color=${config.color}`,
+        `Config: ${bannerConfigPath()}`,
+        "Changes apply on the next startup banner render.",
+      ].join("\n"),
+      "info",
+    );
+  };
+
+  const registerBannerCommand = (name: string) => {
+    pi.registerCommand(name, {
+      description: "Configure the Gentle Pi startup banner.",
+      handler: async (_args, ctx) => {
+        const config = await readBannerConfig();
+        const selected = await ctx.ui.select("Startup banner", [
+          `Rose: ${config.showRose ? "on" : "off"}`,
+          `Text logo: ${config.showTextLogo ? "on" : "off"}`,
+          `Color: ${config.color}`,
+        ]);
+        if (!selected) return;
+        if (selected.startsWith("Rose:")) config.showRose = !config.showRose;
+        else if (selected.startsWith("Text logo:")) config.showTextLogo = !config.showTextLogo;
+        else if (selected.startsWith("Color:")) {
+          config.color = await ctx.ui.select("Startup banner color", [...BANNER_COLORS]) as BannerColor;
+        }
+        await writeBannerConfig(config);
+        notifyBannerConfig(ctx, config);
+      },
+    });
+  };
+  const registerToggleCommand = (name: string, key: "showRose" | "showTextLogo") => {
+    pi.registerCommand(name, {
+      description: `Toggle startup banner ${key === "showRose" ? "rose" : "text logo"}.`,
+      handler: async (_args, ctx) => {
+        const config = await readBannerConfig();
+        config[key] = !config[key];
+        await writeBannerConfig(config);
+        notifyBannerConfig(ctx, config);
+      },
+    });
+  };
+  const registerColorCommand = (name: string) => {
+    pi.registerCommand(name, {
+      description: "Set startup banner color preset.",
+      handler: async (args, ctx) => {
+        const config = await readBannerConfig();
+        const requested = String(args ?? "").trim() as BannerColor;
+        config.color = BANNER_COLORS.includes(requested)
+          ? requested
+          : await ctx.ui.select("Startup banner color", [...BANNER_COLORS]) as BannerColor;
+        await writeBannerConfig(config);
+        notifyBannerConfig(ctx, config);
+      },
+    });
+  };
+  for (const prefix of ["gentle", "gentle-ai"] as const) {
+    registerBannerCommand(`${prefix}:banner`);
+    registerToggleCommand(`${prefix}:toggle-rose`, "showRose");
+    registerToggleCommand(`${prefix}:toggle-text-logo`, "showTextLogo");
+    registerColorCommand(`${prefix}:banner-color`);
+  }
+
   pi.on("session_start", async (_event, ctx) => {
     if (!ctx.hasUI) return;
 
@@ -489,6 +609,8 @@ export default function (pi: ExtensionAPI) {
 
     process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
 
+    const bannerConfig = await readBannerConfig();
+    const palette = BANNER_PALETTES[bannerConfig.color];
     const roseBase = padLines(normalizeAscii(ROSE_LARGE_RAW));
     const logoBase = padLines(TEXT_LOGO);
 
@@ -634,7 +756,7 @@ export default function (pi: ExtensionAPI) {
             const sideBySideMinWidth = roseBase.width + 3 + logoBase.width + 4;
             const wideStatsMinWidth = 122;
             const horizontal =
-              state.mode === "full" && width >= sideBySideMinWidth;
+              state.mode === "full" && bannerConfig.showRose && bannerConfig.showTextLogo && width >= sideBySideMinWidth;
             const wideStats = width >= wideStatsMinWidth;
 
             const b = new LayoutBuilder();
@@ -642,7 +764,7 @@ export default function (pi: ExtensionAPI) {
             b.center(width);
 
             if (state.mode === "minimal") {
-              for (let logoI = 0; logoI < logoBase.lines.length; logoI++) {
+              if (bannerConfig.showTextLogo) for (let logoI = 0; logoI < logoBase.lines.length; logoI++) {
                 const logoLine = logoBase.lines[logoI];
                 b.addRow();
                 b.lines[b.lines.length - 1].push(
@@ -699,8 +821,8 @@ export default function (pi: ExtensionAPI) {
                 b.center(width);
               }
             } else {
-              const showBanner = width >= logoBase.width + 2;
-              const showRose = width >= roseBase.width + 2;
+              const showBanner = bannerConfig.showTextLogo && width >= logoBase.width + 2;
+              const showRose = bannerConfig.showRose && width >= roseBase.width + 2;
               if (showBanner) {
                 for (let logoI = 0; logoI < logoBase.lines.length; logoI++) {
                   const logoLine = logoBase.lines[logoI];
@@ -729,7 +851,7 @@ export default function (pi: ExtensionAPI) {
               }
             }
 
-            if (state.mode === "full") {
+            if (state.mode === "full" || (!bannerConfig.showRose && !bannerConfig.showTextLogo)) {
               b.addRow();
               b.center(width);
 
@@ -876,9 +998,9 @@ export default function (pi: ExtensionAPI) {
                   const k = Math.max(0.01, roseOpacity * pulse);
                   const f = flashPhase ** 0.4;
 
-                  const rBase = Math.floor(255 * k);
-                  const gBase = Math.floor(118 * k);
-                  const bBase = Math.floor(195 * k);
+                  const rBase = Math.floor(palette.rose[0] * k);
+                  const gBase = Math.floor(palette.rose[1] * k);
+                  const bBase = Math.floor(palette.rose[2] * k);
 
                   if (f > 0.85) {
                     line += `\x1b[1m\x1b[38;2;255;255;255m${cell.char}\x1b[0m`;
@@ -916,22 +1038,22 @@ export default function (pi: ExtensionAPI) {
                     line += `\x1b[1m` + rgb(255, 205, 238, cell.char) + `\x1b[22m`;
                   } else if (cell.type === "logo-fresh") {
                     line += cell.char === "▒"
-                      ? rgb(110, 36, 70, cell.char)
-                      : rgb(255, 138, 206, cell.char);
+                      ? paletteColor(bannerConfig.color, "logoDim", cell.char)
+                      : paletteColor(bannerConfig.color, "logoFresh", cell.char);
                   } else {
                     line += cell.char === "▒"
-                      ? rgb(95, 30, 60, cell.char)
-                      : rgb(255, 120, 198, cell.char);
+                      ? paletteColor(bannerConfig.color, "logoDim", cell.char)
+                      : paletteColor(bannerConfig.color, "value", cell.char);
                   }
                   continue;
                 }
 
                 switch (cell.type) {
                   case "label":
-                    line += rgb(200, 100, 160, cell.char);
+                    line += paletteColor(bannerConfig.color, "label", cell.char);
                     break;
                   case "value":
-                    line += rgb(255, 140, 210, cell.char);
+                    line += paletteColor(bannerConfig.color, "value", cell.char);
                     break;
                   case "dim":
                     line += theme.fg("dim", cell.char);

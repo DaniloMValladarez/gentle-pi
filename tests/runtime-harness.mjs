@@ -16,6 +16,17 @@ const EXTENSIONS = [
 	"extensions/startup-banner.ts",
 ];
 
+const EXPECTED_BANNER_COMMANDS = [
+	"gentle:banner",
+	"gentle:toggle-rose",
+	"gentle:toggle-text-logo",
+	"gentle:banner-color",
+	"gentle-ai:banner",
+	"gentle-ai:toggle-rose",
+	"gentle-ai:toggle-text-logo",
+	"gentle-ai:banner-color",
+];
+
 const EXPECTED_COMMANDS = [
 	"gentle-ai:install-sdd",
 	"gentle-ai:sdd-preflight",
@@ -30,6 +41,7 @@ const EXPECTED_COMMANDS = [
 	"gentle-ai:doctor",
 	"sdd-init",
 	"skill-registry:refresh",
+	...EXPECTED_BANNER_COMMANDS,
 ];
 
 function createPi() {
@@ -258,6 +270,28 @@ async function run() {
 		assert.match(needsConfirm.reason, /confirmation/);
 	} finally {
 		await rm(toolCwd, { recursive: true, force: true });
+	}
+
+	const bannerCwd = await tempWorkspace();
+	try {
+		const ctx = createCtx(bannerCwd, true);
+		await commands.get("gentle:toggle-rose").handler("", ctx);
+		let bannerConfig = JSON.parse(await readFile(join(globalConfigHome, "banner.json"), "utf8"));
+		assert.equal(bannerConfig.showRose, false);
+		assert.equal(bannerConfig.showTextLogo, true);
+		assert.equal(bannerConfig.color, "pink");
+		await commands.get("gentle-ai:toggle-text-logo").handler("", ctx);
+		bannerConfig = JSON.parse(await readFile(join(globalConfigHome, "banner.json"), "utf8"));
+		assert.equal(bannerConfig.showTextLogo, false);
+		await commands.get("gentle:banner-color").handler("cyan", ctx);
+		bannerConfig = JSON.parse(await readFile(join(globalConfigHome, "banner.json"), "utf8"));
+		assert.equal(bannerConfig.color, "cyan");
+		await commands.get("gentle:banner").handler("", ctx);
+		bannerConfig = JSON.parse(await readFile(join(globalConfigHome, "banner.json"), "utf8"));
+		assert.equal(bannerConfig.showRose, true);
+	} finally {
+		await rm(bannerCwd, { recursive: true, force: true });
+		await rm(join(globalConfigHome, "banner.json"), { force: true });
 	}
 
 	const noUiCwd = await tempWorkspace();

@@ -376,12 +376,19 @@ Legacy string entries are still accepted and treated as `model`-only config.
 | `/gentle-ai:status`              | Shows package, SDD asset, OpenSpec, and global model config status. |
 | `/gentle:models`                 | Opens global model + effort assignment UI.                          |
 | `/gentle:persona`                | Switches persona mode.                                              |
+| `/gentle:banner`                 | Configures startup banner rose, text logo, and color preset.        |
+| `/gentle:toggle-rose`            | Toggles the startup rose.                                           |
+| `/gentle:toggle-text-logo`       | Toggles the startup text logo.                                      |
+| `/gentle:banner-color`           | Selects a startup banner color preset.                              |
 | `/sdd-init`                      | Initializes or refreshes `openspec/config.yaml`.                    |
 | `/gentle-ai:install-sdd`         | Repairs missing global SDD runtime assets without overwriting files. |
 | `/gentle-ai:install-sdd --force` | Force-refreshes installed global SDD assets.                         |
 
-Package-owned global SDD runtime assets are also refreshed automatically on session start when `gentle-pi` changes. Project-local `.pi/agents` and `.pi/chains` remain manual overrides and are never overwritten by startup refresh.
 | `/skill-registry:refresh`        | Regenerates `.atl/skill-registry.md`.                               |
+
+Package-owned global SDD runtime assets are also refreshed automatically on session start when `gentle-pi` changes. Project-local `.pi/agents` and `.pi/chains` remain manual overrides and are never overwritten by startup refresh.
+
+Startup banner settings are global and default to the current pink rose + text logo. Supported color presets are `pink`, `cyan`, `yellow`, and `green`. The `/gentle-ai:*` aliases are also available for every banner command.
 
 Startup flag:
 
