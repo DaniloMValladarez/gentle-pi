@@ -182,9 +182,8 @@ async function run() {
 		assert.match(promptResult.systemPrompt, /el Gentleman/);
 		assert.match(promptResult.systemPrompt, /openspec\/config\.yaml.*not session preflight/s);
 		assert.match(promptResult.systemPrompt, /Do not mark SDD preflight complete/);
-		await mkdir(join(promptCwd, ".pi", "gentle-ai"), { recursive: true });
 		await writeFile(
-			join(promptCwd, ".pi", "gentle-ai", "persona.json"),
+			join(globalConfigHome, "persona.json"),
 			'{"mode":"neutral"}\n',
 		);
 		const neutralPromptResult = await promptHook({ systemPrompt: "base" }, createCtx(promptCwd));
@@ -204,6 +203,28 @@ async function run() {
 			false,
 			"normal agent startup must not run SDD preflight",
 		);
+		await mkdir(join(promptCwd, ".pi", "gentle-ai"), { recursive: true });
+		await writeFile(
+			join(promptCwd, ".pi", "gentle-ai", "persona.json"),
+			'{"mode":"gentleman"}\n',
+		);
+		const localOverridePromptResult = await promptHook({ systemPrompt: "base" }, createCtx(promptCwd));
+		assert.match(
+			localOverridePromptResult.systemPrompt,
+			/When the user writes Spanish, answer in natural Rioplatense Spanish with voseo/,
+		);
+		const personaCtx = createCtx(promptCwd, true);
+		personaCtx.ui.select = async () => "neutral";
+		await commands.get("gentle:persona").handler("", personaCtx);
+		assert.equal(
+			await readFile(join(globalConfigHome, "persona.json"), "utf8"),
+			'{\n  "mode": "neutral"\n}\n',
+		);
+		assert.equal(
+			await readFile(join(promptCwd, ".pi", "gentle-ai", "persona.json"), "utf8"),
+			'{\n  "mode": "neutral"\n}\n',
+		);
+		assert.match(personaCtx.ui.notifications.at(-1).message, /Global config:/);
 		const onboardCtx = createCtx(promptCwd, true, "sdd-onboard-session");
 		onboardCtx.ui.select = async (_label, options) => options[0];
 		const onboardPromptResult = await promptHook(

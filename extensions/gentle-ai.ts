@@ -421,26 +421,42 @@ function legacyProjectModelConfigPath(cwd: string): string {
 	return join(cwd, ".pi", "gentle-ai", "models.json");
 }
 
-function personaConfigPath(cwd: string): string {
+function projectPersonaConfigPath(cwd: string): string {
 	return join(cwd, ".pi", "gentle-ai", "persona.json");
 }
 
-function readPersonaMode(cwd: string): PersonaMode {
-	const path = personaConfigPath(cwd);
-	if (!existsSync(path)) return "gentleman";
+function personaConfigPath(_cwd: string): string {
+	return join(gentleAiConfigHome(), "persona.json");
+}
+
+function readPersonaFile(path: string): PersonaMode | undefined {
+	if (!existsSync(path)) return undefined;
 	try {
 		const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
-		if (!isRecord(parsed)) return "gentleman";
+		if (!isRecord(parsed)) return undefined;
 		return parsed.mode === "neutral" ? "neutral" : "gentleman";
 	} catch {
-		return "gentleman";
+		return undefined;
 	}
 }
 
-function writePersonaMode(cwd: string, mode: PersonaMode): void {
-	const path = personaConfigPath(cwd);
-	mkdirSync(dirname(path), { recursive: true });
-	writeFileSync(path, `${JSON.stringify({ mode }, null, 2)}\n`);
+function readPersonaMode(cwd: string): PersonaMode {
+	return (
+		readPersonaFile(projectPersonaConfigPath(cwd)) ??
+		readPersonaFile(personaConfigPath(cwd)) ??
+		"gentleman"
+	);
+}
+
+function writePersonaMode(cwd: string, mode: PersonaMode): string[] {
+	const paths = [personaConfigPath(cwd)];
+	const projectPath = projectPersonaConfigPath(cwd);
+	if (existsSync(projectPath)) paths.push(projectPath);
+	for (const path of paths) {
+		mkdirSync(dirname(path), { recursive: true });
+		writeFileSync(path, `${JSON.stringify({ mode }, null, 2)}\n`);
+	}
+	return paths;
 }
 
 function isThinkingLevel(value: unknown): value is ThinkingLevel {
@@ -1408,11 +1424,14 @@ async function handlePersonaCommand(ctx: ExtensionContext): Promise<void> {
 		[...PERSONA_OPTIONS],
 	);
 	if (selected !== "gentleman" && selected !== "neutral") return;
-	writePersonaMode(ctx.cwd, selected);
+	const writtenPaths = writePersonaMode(ctx.cwd, selected);
 	ctx.ui.notify(
 		[
 			`el Gentleman persona set to: ${selected}`,
-			`Config: ${personaConfigPath(ctx.cwd)}`,
+			`Global config: ${personaConfigPath(ctx.cwd)}`,
+			...(writtenPaths.length > 1
+				? [`Project override updated: ${projectPersonaConfigPath(ctx.cwd)}`]
+				: []),
 			"Run /reload or start a new Pi session for already-injected prompts to refresh.",
 		].join("\n"),
 		"info",
