@@ -31,6 +31,8 @@ const EXPECTED_COMMANDS = [
 	"gentle-ai:install-sdd",
 	"gentle-ai:sdd-preflight",
 	"gentle:sdd-preflight",
+	"sdd-status",
+	"gentle-ai:sdd-status",
 	"gentle:models",
 	"gentle-ai:models",
 	"gentleman:models",

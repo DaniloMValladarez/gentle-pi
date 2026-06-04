@@ -29,6 +29,12 @@ import {
 	renderSddPreflightPrompt,
 	type SddPreflightPreferences,
 } from "../lib/sdd-preflight.ts";
+import {
+	parseSddStatusCommandArgs,
+	renderSddStatusMarkdown,
+	resolveSddStatus,
+	sddStatusSeverity,
+} from "../lib/sdd-status.ts";
 
 const PACKAGE_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const ASSETS_DIR = join(PACKAGE_ROOT, "assets");
@@ -1653,6 +1659,33 @@ export default function gentleAi(pi: ExtensionAPI): void {
 		description: "Compatibility alias for /gentle-ai:sdd-preflight.",
 		handler: async (_args, ctx) => {
 			await runSddPreflight(ctx);
+		},
+	});
+
+	const handleSddStatusCommand = (args: string, ctx: ExtensionContext) => {
+		const parsed = parseSddStatusCommandArgs(args);
+		const status = resolveSddStatus({
+			cwd: ctx.cwd,
+			changeName: parsed.changeName,
+			includeInstructions: true,
+		});
+		ctx.ui.notify(
+			parsed.json ? JSON.stringify(status, null, 2) : renderSddStatusMarkdown(status),
+			sddStatusSeverity(status),
+		);
+	};
+
+	pi.registerCommand("sdd-status", {
+		description: "Show deterministic SDD change status and instructions.",
+		handler: async (args, ctx) => {
+			handleSddStatusCommand(args, ctx);
+		},
+	});
+
+	pi.registerCommand("gentle-ai:sdd-status", {
+		description: "Compatibility alias for /sdd-status.",
+		handler: async (args, ctx) => {
+			handleSddStatusCommand(args, ctx);
 		},
 	});
 
