@@ -169,15 +169,32 @@ stop writes → parent captures git status → reviewer fresh audits affected re
 SDD phases:
 
 ```text
-init → explore → proposal → spec → design → tasks → apply → verify → archive
+init → explore → proposal → spec → design → tasks → apply → verify → sync → archive
 ```
 
 Dependency graph:
 
 ```text
-proposal → spec ─┬→ tasks → apply → verify → archive
+proposal → spec ─┬→ tasks → apply → verify → sync → archive
 proposal → design ┘
 ```
+
+`/sdd-status [change]` is the read-only status action for resolving the active change, artifact paths, task progress, dependency readiness, and action context before apply/verify/sync/archive.
+
+## SDD Status Contract
+
+Before `/sdd-continue`, `sdd-apply`, `sdd-verify`, `sdd-sync`, or `sdd-archive`, resolve and carry structured status. Lookup order: parent-provided status, then project override `.pi/gentle-ai/support/sdd-status-contract.md`, then globally installed `~/.pi/agent/gentle-ai/support/sdd-status-contract.md`, then the embedded `sdd-status` prompt contract. Do not use `assets/support/...` as a runtime path; that is only the package source path before installation.
+
+Status must include:
+
+- active change selection and how it was resolved;
+- artifact store and paths/topics for proposal, specs, design, tasks, apply-progress, verify-report, and sync-report;
+- task progress with exact unchecked `- [ ]` implementation task lines;
+- dependency states for apply, verify, sync, and archive;
+- `actionContext` with mode, workspace root, allowed edit roots, and warnings;
+- next recommended action.
+
+Do not guess the active change. If change selection is ambiguous, ask the user and stop. If `actionContext.mode: workspace-planning` and no allowed edit roots are provided, stop before apply/verify/sync/archive and ask for an explicit implementation/edit scope.
 
 ## Lazy SDD Preflight
 

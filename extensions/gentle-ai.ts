@@ -42,6 +42,7 @@ function sddGlobalAssetDriftCount(): number {
 	for (const [assetSubdir, installedSubdir] of [
 		["agents", "agents"],
 		["chains", "chains"],
+		["support", join("gentle-ai", "support")],
 	] as const) {
 		const assetDir = join(ASSETS_DIR, assetSubdir);
 		if (!existsSync(assetDir)) continue;
@@ -79,6 +80,7 @@ function sddLocalOverrideDriftCount(cwd: string): number {
 	for (const [assetSubdir, installedSubdir] of [
 		["agents", join(".pi", "agents")],
 		["chains", join(".pi", "chains")],
+		["support", join(".pi", "gentle-ai", "support")],
 	] as const) {
 		const assetDir = join(ASSETS_DIR, assetSubdir);
 		const installedDir = join(cwd, installedSubdir);
@@ -216,6 +218,7 @@ const SDD_AGENT_NAMES = [
 	"sdd-spec",
 	"sdd-design",
 	"sdd-tasks",
+	"sdd-status",
 	"sdd-apply",
 	"sdd-verify",
 	"sdd-sync",

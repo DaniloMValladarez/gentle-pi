@@ -311,8 +311,10 @@ async function run() {
 		);
 		assert.equal(existsSync(join(globalAgentHome, "agents", "sdd-apply.md")), true);
 		assert.equal(existsSync(join(globalAgentHome, "chains", "sdd-full.chain.md")), true);
+		assert.equal(existsSync(join(globalAgentHome, "gentle-ai", "support", "sdd-status-contract.md")), true);
 		await writeFile(join(globalAgentHome, "agents", "sdd-apply.md"), "stale global apply\n");
 		await writeFile(join(globalAgentHome, "chains", "sdd-full.chain.md"), "stale global chain\n");
+		await writeFile(join(globalAgentHome, "gentle-ai", "support", "sdd-status-contract.md"), "stale global status contract\n");
 		await mkdir(join(noUiCwd, ".pi", "agents"), { recursive: true });
 		await writeFile(join(noUiCwd, ".pi", "agents", "sdd-apply.md"), "project override must stay\n");
 		for (const handler of hooks.get("session_start")) {
@@ -327,6 +329,11 @@ async function run() {
 			await readFile(join(globalAgentHome, "chains", "sdd-full.chain.md"), "utf8"),
 			"stale global chain\n",
 			"session_start must refresh stale global SDD chains",
+		);
+		assert.notEqual(
+			await readFile(join(globalAgentHome, "gentle-ai", "support", "sdd-status-contract.md"), "utf8"),
+			"stale global status contract\n",
+			"session_start must refresh stale global SDD support files",
 		);
 		assert.equal(
 			await readFile(join(noUiCwd, ".pi", "agents", "sdd-apply.md"), "utf8"),
@@ -402,7 +409,9 @@ async function run() {
 		assert.equal(existsSync(join(lazySddCwd, ".pi", "agents", "sdd-apply.md")), false);
 		assert.equal(existsSync(join(lazySddCwd, ".pi", "chains", "sdd-full.chain.md")), false);
 		assert.equal(existsSync(join(globalAgentHome, "agents", "sdd-apply.md")), true);
+		assert.equal(existsSync(join(globalAgentHome, "agents", "sdd-status.md")), true);
 		assert.equal(existsSync(join(globalAgentHome, "agents", "sdd-sync.md")), true);
+		assert.equal(existsSync(join(globalAgentHome, "gentle-ai", "support", "sdd-status-contract.md")), true);
 		assert.equal(existsSync(join(globalAgentHome, "chains", "sdd-full.chain.md")), true);
 		assert.equal(ctx.ui.selections.length, 3);
 		assert.equal(ctx.ui.selections[0].label, "SDD execution mode");
@@ -436,7 +445,9 @@ async function run() {
 		assert.equal(existsSync(join(lazySddCwd, ".pi", "agents", "sdd-apply.md")), false);
 		assert.equal(existsSync(join(lazySddCwd, ".pi", "chains", "sdd-full.chain.md")), false);
 		assert.equal(existsSync(join(globalAgentHome, "agents", "sdd-apply.md")), true);
+		assert.equal(existsSync(join(globalAgentHome, "agents", "sdd-status.md")), true);
 		assert.equal(existsSync(join(globalAgentHome, "agents", "sdd-sync.md")), true);
+		assert.equal(existsSync(join(globalAgentHome, "gentle-ai", "support", "sdd-status-contract.md")), true);
 		assert.equal(existsSync(join(globalAgentHome, "chains", "sdd-full.chain.md")), true);
 		const globalSddApply = await readFile(
 			join(globalAgentHome, "agents", "sdd-apply.md"),
@@ -605,6 +616,8 @@ async function run() {
 		assert.match(ctx.ui.notifications.at(-1).message, /Global Gentle AI SDD assets installed/);
 		assert.equal(existsSync(join(installCwd, ".pi", "agents", "sdd-apply.md")), false);
 		assert.equal(existsSync(join(globalAgentHome, "agents", "sdd-apply.md")), true);
+		assert.equal(existsSync(join(globalAgentHome, "agents", "sdd-status.md")), true);
+		assert.equal(existsSync(join(globalAgentHome, "gentle-ai", "support", "sdd-status-contract.md")), true);
 	} finally {
 		await rm(installCwd, { recursive: true, force: true });
 	}
@@ -613,9 +626,11 @@ async function run() {
 	try {
 		await mkdir(join(staleAssetsCwd, ".pi", "agents"), { recursive: true });
 		await mkdir(join(staleAssetsCwd, ".pi", "chains"), { recursive: true });
+		await mkdir(join(staleAssetsCwd, ".pi", "gentle-ai", "support"), { recursive: true });
 		await writeFile(join(staleAssetsCwd, ".pi", "agents", "sdd-apply.md"), "stale apply\n");
 		await writeFile(join(staleAssetsCwd, ".pi", "agents", "sdd-spec.md"), "stale spec\n");
 		await writeFile(join(staleAssetsCwd, ".pi", "chains", "sdd-full.chain.md"), "stale chain\n");
+		await writeFile(join(staleAssetsCwd, ".pi", "gentle-ai", "support", "sdd-status-contract.md"), "stale status contract\n");
 		const ctx = createCtx(staleAssetsCwd, true);
 		await commands.get("gentle-ai:status").handler("", ctx);
 		assert.match(ctx.ui.notifications.at(-1).message, /Project-local SDD override drift: \d+ file\(s\)/);
@@ -638,7 +653,9 @@ async function run() {
 		assert.equal(existsSync(join(sddCwd, ".pi", "agents", "sdd-apply.md")), false);
 		assert.equal(existsSync(join(sddCwd, ".pi", "chains", "sdd-full.chain.md")), false);
 		assert.equal(existsSync(join(globalAgentHome, "agents", "sdd-apply.md")), true);
+		assert.equal(existsSync(join(globalAgentHome, "agents", "sdd-status.md")), true);
 		assert.equal(existsSync(join(globalAgentHome, "agents", "sdd-sync.md")), true);
+		assert.equal(existsSync(join(globalAgentHome, "gentle-ai", "support", "sdd-status-contract.md")), true);
 		assert.equal(existsSync(join(globalAgentHome, "chains", "sdd-full.chain.md")), true);
 		assert.equal(ctx.ui.selections.length, 3);
 		assert.match(ctx.ui.notifications[0].message, /SDD preflight complete/);
