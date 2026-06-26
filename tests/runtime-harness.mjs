@@ -7,6 +7,7 @@ import { dirname, join } from "node:path";
 import { discoverAndLoadExtensions } from "@earendil-works/pi-coding-agent";
 import { matchesKey } from "@earendil-works/pi-tui";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { stripAnsi } from "../lib/terminal-theme.ts";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const EXTENSIONS = [
@@ -823,8 +824,9 @@ async function run() {
 		ctx.ui.custom = (factory) => {
 			const panel = factory(null, null, null, () => undefined);
 			const initialLines = panel.render(120);
+			const plainInitialLines = initialLines.map(stripAnsi);
 			assert.ok(
-				initialLines[0].startsWith("╭") && initialLines.at(-1).startsWith("╰"),
+				plainInitialLines[0].startsWith("╭") && plainInitialLines.at(-1).startsWith("╰"),
 				"model panel should render inside a bordered card",
 			);
 			assert.ok(
@@ -832,36 +834,43 @@ async function run() {
 				"long model agent list should fit within a 24-row terminal 85% overlay budget",
 			);
 			assert.ok(
-				initialLines.some((line) => /↓ \d+ more agent\(s\)/.test(line)),
+				plainInitialLines.some((line) => /↓ \d+ more agent\(s\)/.test(line)),
 				"long model agent list should render a down-scroll indicator",
 			);
 			assert.ok(
-				initialLines.some((line) => line.includes("Continue")),
+				plainInitialLines.some((line) => line.includes("Continue")),
 				"long model agent list should keep Continue visible",
 			);
 			assert.doesNotMatch(
 				initialLines.join("\n"),
-				/[\u001b\u0007]/,
-				"model panel must strip terminal control sequences from agent labels",
+				/\u001b\]|\u0007/,
+				"model panel must strip unsafe terminal control sequences from agent labels",
+			);
+			assert.doesNotMatch(
+				plainInitialLines.join("\n"),
+				/\]52|\[31m/,
+				"model panel must strip user-provided terminal escapes from labels",
 			);
 			for (let i = 0; i < 20; i++) panel.handleInput("j");
 			const scrolledLines = panel.render(120);
+			const plainScrolledLines = scrolledLines.map(stripAnsi);
 			assert.ok(
 				scrolledLines.length <= 20,
 				"scrolled model agent list should stay within the overlay height budget",
 			);
 			assert.ok(
-				scrolledLines.some((line) => /↑ \d+ more agent\(s\)/.test(line)),
+				plainScrolledLines.some((line) => /↑ \d+ more agent\(s\)/.test(line)),
 				"long model agent list should render an up-scroll indicator after navigation",
 			);
 			panel.handleInput("G");
 			const bottomLines = panel.render(120);
+			const plainBottomLines = bottomLines.map(stripAnsi);
 			assert.ok(
 				bottomLines.length <= 20,
 				"bottom model agent list should stay within the overlay height budget",
 			);
 			assert.ok(
-				bottomLines.some((line) => line.includes("▸ ← Back")),
+				plainBottomLines.some((line) => line.includes("▸ ← Back")),
 				"G should jump to the Back action",
 			);
 			return Promise.resolve({ type: "cancel" });

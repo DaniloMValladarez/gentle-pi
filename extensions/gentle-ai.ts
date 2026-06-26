@@ -19,6 +19,8 @@ import { fileURLToPath } from "node:url";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
+	Theme,
+	ThemeColor,
 	ToolCallEventResult,
 } from "@earendil-works/pi-coding-agent";
 import { matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
@@ -45,6 +47,7 @@ import {
 	type ChangedDiff,
 	type TriggerEvent,
 } from "../lib/review-triggers.ts";
+import { sanitizeTerminalText, stripAnsi } from "../lib/terminal-theme.ts";
 
 const PACKAGE_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const ASSETS_DIR = join(PACKAGE_ROOT, "assets");
@@ -713,16 +716,7 @@ function isThinkingLevel(value: unknown): value is ThinkingLevel {
 	);
 }
 
-const ANSI_ESCAPE_PATTERN =
-	/[\u001b\u009b][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[a-zA-Z\d]*)*)?\u0007)|(?:(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]))/g;
-const CONTROL_CHAR_PATTERN = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g;
 const SAFE_MODEL_ID_PATTERN = /^[A-Za-z0-9._~:@/+%-]+$/;
-
-function sanitizeTerminalText(value: string): string {
-	return value
-		.replace(ANSI_ESCAPE_PATTERN, "")
-		.replace(CONTROL_CHAR_PATTERN, "");
-}
 
 function normalizeModelId(value: unknown): string | undefined {
 	if (typeof value !== "string") return undefined;
@@ -1236,6 +1230,26 @@ type ModelPanelResult =
 
 const SET_ALL_AGENTS = "Set all agents";
 
+const PANEL_TONE = {
+	BORDER: "border",
+	MUTED: "muted",
+	TEXT: "text",
+	TITLE: "title",
+	ACCENT: "accent",
+	STATUS: "status",
+} as const;
+
+type PanelTone = (typeof PANEL_TONE)[keyof typeof PANEL_TONE];
+
+const PANEL_TONE_COLOR: Record<PanelTone, ThemeColor> = {
+	border: "border",
+	muted: "muted",
+	text: "text",
+	title: "accent",
+	accent: "accent",
+	status: "thinkingHigh",
+};
+
 class SddModelPanel implements OverlayComponent {
 	private cursor = 0;
 	private mode: "agents" | "models" | "effort" = "agents";
@@ -1247,17 +1261,20 @@ class SddModelPanel implements OverlayComponent {
 	private readonly rows: string[];
 	private readonly modelOptions: string[];
 	private readonly done: (result: ModelPanelResult) => void;
+	private readonly theme: Theme | undefined;
 
 	constructor(
 		initialConfig: AgentModelConfig,
 		modelOptions: string[],
 		agents: string[],
 		done: (result: ModelPanelResult) => void,
+		theme?: Theme,
 	) {
 		this.draft = cloneModelConfig(initialConfig);
 		this.rows = [SET_ALL_AGENTS, ...agents];
 		this.modelOptions = modelOptions;
 		this.done = done;
+		this.theme = theme;
 	}
 
 	invalidate(): void {}
@@ -1287,13 +1304,44 @@ class SddModelPanel implements OverlayComponent {
 
 	private renderCard(lines: string[], width: number): string[] {
 		const innerWidth = Math.max(1, width - 4);
-		const fit = (text = "") =>
-			truncateToWidth(sanitizeTerminalText(text), innerWidth, "…", true).padEnd(innerWidth);
+		const horizontal = "─".repeat(innerWidth + 2);
+		const border = (text: string) => this.renderText(text, "border");
 		return [
-			`╭${"─".repeat(innerWidth + 2)}╮`,
-			...lines.map((line) => `│ ${fit(line)} │`),
-			`╰${"─".repeat(innerWidth + 2)}╯`,
+			border(`╭${horizontal}╮`),
+			...lines.map(
+				(line) =>
+					`${border("│")} ${this.fitStyledLine(line, innerWidth)} ${border("│")}`,
+			),
+			border(`╰${horizontal}╯`),
 		];
+	}
+
+	private fitStyledLine(line: string, width: number): string {
+		const visible = stripAnsi(line);
+		if (visible.length > width) {
+			return truncateToWidth(visible, Math.max(1, width), "…", true);
+		}
+		return `${line}${" ".repeat(Math.max(0, width - visible.length))}`;
+	}
+
+	private renderLine(text = "", width: number, tone?: PanelTone): string {
+		const safe = truncateToWidth(
+			sanitizeTerminalText(text),
+			Math.max(1, width),
+			"…",
+			true,
+		);
+		return tone ? this.renderText(safe, tone) : safe;
+	}
+
+	private renderText(text: string, tone: PanelTone): string {
+		const safe = sanitizeTerminalText(text);
+		if (!this.theme) return safe;
+		return this.theme.fg(PANEL_TONE_COLOR[tone], safe);
+	}
+
+	private renderCursor(focused: boolean): string {
+		return focused ? this.renderText("▸", "accent") : " ";
 	}
 
 	private handleAgentInput(data: string): void {
@@ -1478,11 +1526,11 @@ class SddModelPanel implements OverlayComponent {
 
 	private renderAgentList(width: number): string[] {
 		const lines: string[] = [];
-		const line = (text = "") =>
-			truncateToWidth(text, Math.max(1, width), "…", true);
-		lines.push(line("Assign Models and Effort to Agents"));
+		const line = (text = "", tone?: PanelTone) =>
+			this.renderLine(text, width, tone);
+		lines.push(line("Assign Models and Effort to Agents", "title"));
 		lines.push("");
-		lines.push(line("Current assignments:"));
+		lines.push(line("Current assignments:", "muted"));
 		lines.push("");
 		const visibleRows = Math.min(AGENT_LIST_MAX_VISIBLE_ROWS, this.rows.length);
 		const listCursor = Math.min(this.cursor, this.rows.length - 1);
@@ -1494,7 +1542,7 @@ class SddModelPanel implements OverlayComponent {
 			),
 		);
 		const end = Math.min(this.rows.length, start + visibleRows);
-		if (start > 0) lines.push(line(`  ↑ ${start} more agent(s)`));
+		if (start > 0) lines.push(line(`  ↑ ${start} more agent(s)`, "muted"));
 		for (let i = start; i < end; i++) {
 			const row = this.rows[i] ?? SET_ALL_AGENTS;
 			const focused = i === this.cursor;
@@ -1502,21 +1550,28 @@ class SddModelPanel implements OverlayComponent {
 				row === SET_ALL_AGENTS
 					? this.renderSetAllLabel(row)
 					: this.renderAgentLabel(row);
-			lines.push(line(`${focused ? "▸" : " "} ${label}`));
+			lines.push(`${this.renderCursor(focused)} ${label}`);
 		}
 		if (end < this.rows.length)
-			lines.push(line(`  ↓ ${this.rows.length - end} more agent(s)`));
+			lines.push(line(`  ↓ ${this.rows.length - end} more agent(s)`, "muted"));
 		lines.push("");
 		lines.push(
-			line(`${this.cursor === this.rows.length ? "▸" : " "} Continue`),
+			`${this.renderCursor(this.cursor === this.rows.length)} ${this.renderText(
+				"Continue",
+				this.cursor === this.rows.length ? "accent" : "text",
+			)}`,
 		);
 		lines.push(
-			line(`${this.cursor === this.rows.length + 1 ? "▸" : " "} ← Back`),
+			`${this.renderCursor(this.cursor === this.rows.length + 1)} ${this.renderText(
+				"← Back",
+				this.cursor === this.rows.length + 1 ? "accent" : "text",
+			)}`,
 		);
 		lines.push("");
 		lines.push(
 			line(
 				"j/k scroll • enter model/save • e effort • i inherit • c custom • x export • r restore • ctrl+s save • esc back",
+				"muted",
 			),
 		);
 		return lines;
@@ -1525,11 +1580,15 @@ class SddModelPanel implements OverlayComponent {
 	private renderModelPicker(width: number): string[] {
 		const lines: string[] = [];
 		const options = this.filteredModelOptions();
-		const line = (text = "") =>
-			truncateToWidth(text, Math.max(1, width), "…", true);
-		lines.push(line(`Select model for ${sanitizeTerminalText(this.selectedRow)}`));
+		const line = (text = "", tone?: PanelTone) =>
+			this.renderLine(text, width, tone);
+		lines.push(
+			line(`Select model for ${sanitizeTerminalText(this.selectedRow)}`, "title"),
+		);
 		lines.push("");
-		lines.push(line(`◎ ${this.query || "search..."}`));
+		lines.push(
+			`${this.renderText("◎", "accent")} ${this.renderText(this.query || "search...", "muted")}`,
+		);
 		lines.push("");
 		const start = Math.max(
 			0,
@@ -1541,12 +1600,17 @@ class SddModelPanel implements OverlayComponent {
 		const end = Math.min(options.length, start + MODEL_LIST_MAX_VISIBLE_ROWS);
 		for (let i = start; i < end; i++) {
 			const focused = i === this.modelCursor;
-			lines.push(line(`${focused ? "▸" : " "} ${sanitizeTerminalText(options[i] ?? "")}`));
+			lines.push(
+				`${this.renderCursor(focused)} ${this.renderText(
+					options[i] ?? "",
+					focused ? "status" : "text",
+				)}`,
+			);
 		}
-		if (options.length === 0) lines.push(line("  No matching models"));
+		if (options.length === 0) lines.push(line("  No matching models", "muted"));
 		lines.push("");
 		lines.push(
-			line("j/k: navigate • type: search • enter: select • esc: back"),
+			line("j/k: navigate • type: search • enter: select • esc: back", "muted"),
 		);
 		return lines;
 	}
@@ -1580,16 +1644,23 @@ class SddModelPanel implements OverlayComponent {
 
 	private renderEffortPicker(width: number): string[] {
 		const lines: string[] = [];
-		const line = (text = "") =>
-			truncateToWidth(text, Math.max(1, width), "…", true);
-		lines.push(line(`Select effort for ${sanitizeTerminalText(this.selectedRow)}`));
+		const line = (text = "", tone?: PanelTone) =>
+			this.renderLine(text, width, tone);
+		lines.push(
+			line(`Select effort for ${sanitizeTerminalText(this.selectedRow)}`, "title"),
+		);
 		lines.push("");
 		for (let i = 0; i < THINKING_OPTIONS.length; i++) {
 			const focused = i === this.effortCursor;
-			lines.push(line(`${focused ? "▸" : " "} ${THINKING_OPTIONS[i]}`));
+			lines.push(
+				`${this.renderCursor(focused)} ${this.renderText(
+					THINKING_OPTIONS[i] ?? "",
+					focused ? "status" : "text",
+				)}`,
+			);
 		}
 		lines.push("");
-		lines.push(line("j/k: navigate • enter: select • esc: back"));
+		lines.push(line("j/k: navigate • enter: select • esc: back", "muted"));
 		return lines;
 	}
 
@@ -1608,14 +1679,32 @@ class SddModelPanel implements OverlayComponent {
 		const effortLabel = efforts.every((value) => value === firstEffort)
 			? firstEffort
 			: "mixed";
-		return `${sanitizeTerminalText(row).padEnd(20)} model=${sanitizeTerminalText(modelLabel)}, effort=${sanitizeTerminalText(effortLabel)}`;
+		return `${this.renderText(sanitizeTerminalText(row).padEnd(20), "text")} ${this.renderText("model=", "muted")}${this.renderText(modelLabel, "status")}${this.renderText(
+			", effort=",
+			"muted",
+		)}${this.renderText(effortLabel, "status")}`;
 	}
 
 	private renderAgentLabel(row: string): string {
 		const model = this.draft[row]?.model ?? "inherit";
 		const effort = this.draft[row]?.thinking ?? "inherit";
-		return `${sanitizeTerminalText(row).padEnd(20)} model=${sanitizeTerminalText(model)}, effort=${sanitizeTerminalText(effort)}`;
+		return `${this.renderText(sanitizeTerminalText(row).padEnd(20), "text")} ${this.renderText("model=", "muted")}${this.renderText(model, "status")}${this.renderText(
+			", effort=",
+			"muted",
+		)}${this.renderText(effort, "status")}`;
 	}
+}
+
+function renderSddModelPanelForTesting(
+	initialConfig: AgentModelConfig,
+	modelOptions: string[],
+	agents: string[],
+	width: number,
+	theme?: Theme,
+): string[] {
+	return new SddModelPanel(initialConfig, modelOptions, agents, () => {}, theme).render(
+		width,
+	);
 }
 
 async function showSddModelPanel(
@@ -1625,8 +1714,8 @@ async function showSddModelPanel(
 	const modelOptions = await getPiModelOptions(ctx);
 	const agents = listDiscoverableAgents(ctx.cwd).map((agent) => agent.name);
 	return ctx.ui.custom<ModelPanelResult>(
-		(_tui, _theme, _keybindings, done) =>
-			new SddModelPanel(config, modelOptions, agents, done),
+		(_tui, theme, _keybindings, done) =>
+			new SddModelPanel(config, modelOptions, agents, done, theme),
 		{
 			overlay: true,
 			overlayOptions: {
@@ -1918,6 +2007,7 @@ export const __testing = {
 	buildGentlePrompt,
 	classifyReviewEvent,
 	parseNumstat,
+	renderSddModelPanel: renderSddModelPanelForTesting,
 };
 
 export default function gentleAi(pi: ExtensionAPI): void {

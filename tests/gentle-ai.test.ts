@@ -3,7 +3,9 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
+import type { Theme } from "@earendil-works/pi-coding-agent";
 import { __testing } from "../extensions/gentle-ai.ts";
+import { stripAnsi } from "../lib/terminal-theme.ts";
 
 function writeMarkdown(path: string, content: string): void {
 	mkdirSync(dirname(path), { recursive: true });
@@ -82,4 +84,36 @@ test("discoverable model agents include installed Judgment Day agents", (t) => {
 		discovered.filter((name) => name.startsWith("jd-")),
 		["jd-judge-a", "jd-judge-b", "jd-fix-agent"],
 	);
+});
+
+test("model panel render does not auto-apply the Gentle theme and sanitizes agent labels", () => {
+	const lines = __testing.renderSddModelPanel(
+		{},
+		["openai/gpt-5.5"],
+		["safe-agent\x1b[31m"],
+		72,
+	);
+	const rendered = lines.join("\n");
+	const plain = stripAnsi(rendered);
+
+	assert.doesNotMatch(rendered, /\x1b\[38;2;71;85;105m/);
+	assert.doesNotMatch(rendered, /\x1b\[38;2;125;211;252m/);
+	assert.match(plain, /Assign Models and Effort to Agents/);
+	assert.match(plain, /safe-agent\s+model=inherit, effort=inherit/);
+	assert.doesNotMatch(plain, /\[31m/);
+});
+
+test("model panel render uses the Pi-provided current theme when supplied", () => {
+	const currentTheme = {
+		fg(_color: string, text: string): string {
+			return `\x1b[35m${text}\x1b[39m`;
+		},
+	} as unknown as Theme;
+
+	const rendered = __testing
+		.renderSddModelPanel({}, ["openai/gpt-5.5"], ["safe-agent"], 72, currentTheme)
+		.join("\n");
+
+	assert.match(rendered, /\x1b\[35m/);
+	assert.match(stripAnsi(rendered), /Assign Models and Effort to Agents/);
 });
