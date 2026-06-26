@@ -41,7 +41,7 @@ jobs:
       - name: Reinstall with npm for bundled dependency publish
         run: |
           rm -rf node_modules
-          npm install --package-lock=false
+          npm install --package-lock=false --omit=dev
 
       - name: Publish to npm
-        run: npm publish --provenance --access public --tag "${{ inputs.dist-tag }}"
+        run: npm publish --ignore-scripts --provenance --access public --tag "${{ inputs.dist-tag }}"
