@@ -1,5 +1,18 @@
 # @tintinweb/pi-subagents
 
+> [!NOTE]
+> This folder is a temporary vendored snapshot of `@tintinweb/pi-subagents` kept inside `gentle-pi` while the upstream fix is under review.
+>
+> It exists because foreground agents could render twice in Pi: once in the inline `Agent` tool result and again in the persistent `Agents` widget. In tmux/zellij, fast partial updates could also leave stale status rows until a forced redraw (`Ctrl+O`, pane zoom/unzoom).
+>
+> The local fix keeps the persistent widget focused on background agents and renders running foreground status as separate component lines instead of a single multiline `Text` component.
+>
+> Upstream tracking:
+> - Issue: https://github.com/tintinweb/pi-subagents/issues/118
+> - PR: https://github.com/tintinweb/pi-subagents/pull/117
+>
+> Remove this vendored copy once the upstream package includes the fix and `gentle-pi` can depend on that released version.
+
 A [pi](https://pi.dev) extension that brings **Claude Code-style autonomous sub-agents** to pi. Spawn specialized agents that run in isolated sessions — each with its own tools, system prompt, model, and thinking level. Run them in foreground or background, steer them mid-run, resume completed sessions, and define your own custom agent types.
 
 <img width="600" alt="pi-subagents screenshot" src="https://github.com/tintinweb/pi-subagents/raw/master/media/screenshot.png" />
